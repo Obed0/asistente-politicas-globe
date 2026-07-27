@@ -36,8 +36,9 @@ source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
-echo "📄 Generando el manual de políticas dummy (PDF)..."
+echo "📄 Generando los documentos dummy (RH + e-commerce)..."
 python generar_pdf_dummy.py
+python generar_documentos_ecommerce.py
 
 echo "🔑 Configurando variables de entorno..."
 if [ ! -f ".env" ]; then

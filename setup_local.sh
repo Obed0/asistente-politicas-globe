@@ -27,8 +27,9 @@ echo "📦 Instalando dependencias..."
 pip install --upgrade pip
 pip install -r requirements.txt
 
-echo "📄 Generando el manual de políticas dummy (PDF)..."
+echo "📄 Generando los documentos dummy (RH + e-commerce)..."
 python generar_pdf_dummy.py
+python generar_documentos_ecommerce.py
 
 if [ ! -f ".env" ]; then
     echo "⚠️  No se encontró el archivo .env"

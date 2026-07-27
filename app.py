@@ -172,12 +172,16 @@ def construir_cadena_rag(vectorstore, groq_api_key: str):
     prompt_qa = PromptTemplate(
         input_variables=["context", "question"],
         template=(
-            "Eres el asistente virtual de políticas internas de Globex Corp. "
+            "Eres el asistente virtual de Globex Corp, una tienda online. "
+            "Respondes tanto preguntas internas de RH (vacaciones, viáticos, "
+            "trabajo remoto, ética) como preguntas de clientes sobre la tienda "
+            "(privacidad, reembolsos, envíos, términos y condiciones, FAQ). "
             "Responde SIEMPRE en español, de forma clara y concisa, basándote "
-            "únicamente en el siguiente contexto extraído del manual de "
-            "políticas. Si la respuesta no se encuentra en el contexto, "
-            "indica explícitamente que no cuentas con esa información en el "
-            "manual y sugiere contactar al área de Recursos Humanos.\n\n"
+            "únicamente en el siguiente contexto extraído de los documentos "
+            "oficiales de Globex Corp. Si la respuesta no se encuentra en el "
+            "contexto, indica explícitamente que no cuentas con esa "
+            "información y sugiere contactar a RH (temas internos) o a "
+            "soporte@globexcorp.com (temas de clientes), según corresponda.\n\n"
             "Contexto:\n{context}\n\n"
             "Pregunta: {question}\n"
             "Respuesta:"
@@ -253,15 +257,14 @@ def main():
             {
                 "rol": "assistant",
                 "contenido": (
-                    "¡Hola! 👋 Soy el asistente de políticas internas de "
-                    "Globex Corp. Puedes preguntarme, por ejemplo:\n\n"
+                    "¡Hola! 👋 Soy el asistente de Globex Corp. Puedo responder "
+                    "preguntas de RH y también de tienda online. Por ejemplo:\n\n"
                     "- ¿Cuántos días de vacaciones me corresponden con 6 años "
                     "de antigüedad?\n"
-                    "- ¿Cuál es el tope diario de viáticos de alimentación en "
-                    "viaje internacional?\n"
-                    "- ¿Qué equipo me da la empresa si trabajo en modalidad "
-                    "remota?\n"
-                    "- ¿Cómo funciona el canal de denuncias internas?"
+                    "- ¿Cuántos días tengo para devolver un producto?\n"
+                    "- ¿Cuánto cuesta el envío estándar a una zona urbana?\n"
+                    "- ¿Qué hago si recibo un producto dañado?\n"
+                    "- ¿Comparten mis datos personales con terceros?"
                 ),
             }
         ]

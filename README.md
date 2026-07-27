@@ -15,12 +15,16 @@ funcional en la nube de **Oracle Cloud Infrastructure (OCI)**.
 
 ## 📌 Descripción general
 
-El sistema permite a cualquier colaborador de Globex Corp preguntar, en
-lenguaje natural, sobre las políticas de la empresa (vacaciones, viáticos,
-trabajo remoto, código de ética, etc.) y recibir una respuesta precisa
-generada por un modelo de lenguaje (LLM), fundamentada exclusivamente en
-el contenido del manual corporativo real, evitando respuestas inventadas
-("alucinaciones") del modelo.
+**Globex Corp** es una tienda online (e-commerce) ficticia. El agente
+responde en lenguaje natural tanto preguntas **internas de RH** (vacaciones,
+viáticos, trabajo remoto, código de ética) como preguntas **de cara al
+cliente** propias de una tienda en línea: privacidad, reembolsos y
+devoluciones, envíos, términos y condiciones, y preguntas frecuentes.
+
+Todas las respuestas se generan con un modelo de lenguaje (LLM),
+fundamentadas exclusivamente en el contenido de los documentos reales
+cargados en `documentos/`, evitando respuestas inventadas ("alucinaciones")
+del modelo.
 
 ## 🏗️ Arquitectura de la solución
 
@@ -82,9 +86,15 @@ el contenido del manual corporativo real, evitando respuestas inventadas
 ```
 asistente-politicas-globex/
 ├── app.py                       # Aplicación Streamlit con la cadena RAG
-├── generar_pdf_dummy.py         # Genera el manual PDF de Globex Corp
-├── documentos/                  # Carpeta donde vive el PDF fuente
-│   └── Manual_Politicas_GlobexCorp.pdf
+├── generar_pdf_dummy.py         # Genera el manual de RH de Globex Corp
+├── generar_documentos_ecommerce.py  # Genera los 5 documentos de e-commerce
+├── documentos/                  # Carpeta con TODOS los PDF fuente (el agente los indexa todos)
+│   ├── Manual_Politicas_GlobexCorp.pdf              # RH: vacaciones, viáticos, remoto, ética
+│   ├── Politica_Privacidad_GlobexCorp.pdf           # Datos personales de clientes
+│   ├── Politica_Reembolsos_Devoluciones_GlobexCorp.pdf
+│   ├── FAQ_GlobexCorp.pdf                           # Preguntas frecuentes de compra
+│   ├── Guia_Envios_Entregas_GlobexCorp.pdf          # Tiempos, costos, cobertura
+│   └── Terminos_Condiciones_GlobexCorp.pdf
 ├── indice_faiss/                # Índice vectorial (se genera automáticamente)
 ├── requirements.txt             # Dependencias del proyecto
 ├── .env.example                 # Plantilla de variables de entorno
@@ -130,8 +140,9 @@ source venv/bin/activate        # En Windows: venv\Scripts\activate
 # 3. Instalar dependencias
 pip install -r requirements.txt
 
-# 4. Generar el documento PDF dummy
+# 4. Generar los documentos PDF dummy (RH + e-commerce)
 python generar_pdf_dummy.py
+python generar_documentos_ecommerce.py
 
 # 5. Configurar variables de entorno
 cp .env.example .env
@@ -156,6 +167,10 @@ La aplicación se abrirá automáticamente en `http://localhost:8501`.
 | *¿Cuál es el tope diario de viáticos de alimentación en un viaje internacional?* | El tope diario para alimentación en viaje internacional es de **USD 60**. |
 | *¿Qué equipo me da la empresa si trabajo en modalidad remota?*         | La empresa entrega en préstamo **laptop corporativa, monitor adicional (según stock), teclado y mouse inalámbricos**, y silla ergonómica tras 6 meses en remoto. |
 | *¿Cómo puedo denunciar una situación de acoso laboral de forma confidencial?* | A través de la **Línea Ética Globex**, un canal anónimo disponible 24/7 vía portal web, correo dedicado o línea telefónica gratuita. |
+| *¿Cuántos días tengo para devolver un producto?*                      | **30 días calendario** desde la entrega, sin necesidad de justificar el motivo (derecho de retracto). |
+| *¿Cuánto cuesta el envío estándar a una zona urbana?*                  | **USD 4.99**, con entrega estimada de 3 a 5 días hábiles; es gratis en compras mayores a USD 60. |
+| *¿Qué pasa si recibo un producto dañado?*                              | Debe reportarse dentro de **48 horas** desde "Mi Cuenta > Reportar problema", adjuntando fotos; se procesa reemplazo o reembolso sin costo. |
+| *¿Comparten mis datos con terceros?*                                    | Solo con mensajería, la pasarela de pago y email marketing (si diste consentimiento); **nunca se venden** a terceros con fines publicitarios ajenos. |
 | *¿Cuál es la política de vacaciones de la empresa X?* (fuera del documento) | El agente indica que **no cuenta con esa información en el manual** y sugiere contactar a Recursos Humanos, en lugar de inventar una respuesta. |
 
 ## ☁️ Evidencia del Deploy en OCI

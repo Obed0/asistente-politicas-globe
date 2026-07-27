@@ -24,8 +24,9 @@ Write-Host "📦 Instalando dependencias..." -ForegroundColor Cyan
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 
-Write-Host "📄 Generando el manual de políticas dummy (PDF)..." -ForegroundColor Cyan
+Write-Host "📄 Generando los documentos dummy (RH + e-commerce)..." -ForegroundColor Cyan
 python generar_pdf_dummy.py
+python generar_documentos_ecommerce.py
 
 if (-Not (Test-Path ".env")) {
     Write-Host "⚠️  No se encontró el archivo .env" -ForegroundColor Yellow
