@@ -1,0 +1,21 @@
+# Entornos virtuales
+venv/
+env/
+.venv/
+
+# Variables de entorno reales (nunca subir esto)
+.env
+
+# Índice vectorial generado localmente (se reconstruye con el script)
+indice_faiss/
+
+# Archivos de Python
+__pycache__/
+*.pyc
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
