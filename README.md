@@ -1,200 +1,173 @@
-# 🤖 Asistente de Políticas Internas — Globex Corp
+# 🤖 Asistente de Globex Corp — Agente RAG
 
 Proyecto desarrollado para el **Challenge Alura Agente**: un agente de
 Inteligencia Artificial basado en **RAG (Retrieval Augmented Generation)**
-capaz de responder preguntas en lenguaje natural sobre el manual de
-políticas internas de una empresa ficticia, **Globex Corp**, con deploy
-funcional en la nube de **Oracle Cloud Infrastructure (OCI)**.
+capaz de responder preguntas en lenguaje natural sobre los documentos
+internos y de atención al cliente de **Globex Corp**, una tienda online ficticia.
 
-> Proyecto adaptado a partir de una arquitectura de referencia
-> ([asistente-politicas-technova](https://github.com/liza18/asistente-politicas-technova)),
-> personalizado con documentación propia, empresa ficticia distinta
-> (Globex Corp) y deploy propio en OCI Compute.
+🌐 **Demo en vivo:** [rag-asistente-globe.streamlit.app](https://rag-asistente-globe.streamlit.app)
 
 ---
 
 ## 📌 Descripción general
 
-**Globex Corp** es una tienda online (e-commerce) ficticia. El agente
-responde en lenguaje natural tanto preguntas **internas de RH** (vacaciones,
-viáticos, trabajo remoto, código de ética) como preguntas **de cara al
-cliente** propias de una tienda en línea: privacidad, reembolsos y
-devoluciones, envíos, términos y condiciones, y preguntas frecuentes.
+**Globex Corp** es una tienda online (e-commerce) ficticia. El agente responde
+preguntas tanto **internas de RH** (vacaciones, viáticos, trabajo remoto, ética)
+como **de cara al cliente** (privacidad, reembolsos, envíos, términos y condiciones,
+preguntas frecuentes).
 
-Todas las respuestas se generan con un modelo de lenguaje (LLM),
-fundamentadas exclusivamente en el contenido de los documentos reales
-cargados en `documentos/`, evitando respuestas inventadas ("alucinaciones")
-del modelo.
+Todas las respuestas se generan con un modelo de lenguaje (LLM) fundamentadas
+**exclusivamente** en el contenido de los 6 documentos PDF cargados, evitando
+respuestas inventadas ("alucinaciones").
+
+---
 
 ## 🏗️ Arquitectura de la solución
 
 ```
-┌──────────────────────┐
-│  Manual_Politicas_    │
-│  GlobexCorp.pdf        │  <- generado por generar_pdf_dummy.py
-└──────────┬────────────┘
-           │  PyPDFLoader
-           ▼
-┌──────────────────────┐
-│ RecursiveCharacter     │  chunk_size=1200
-│ TextSplitter           │  chunk_overlap=300
-└──────────┬────────────┘
-           │  fragmentos de texto
-           ▼
-┌──────────────────────┐
-│ HuggingFaceEmbeddings  │  all-MiniLM-L6-v2
-└──────────┬────────────┘
-           │  vectores
-           ▼
-┌──────────────────────┐
-│  Vector Store FAISS    │  índice local (indice_faiss/)
-└──────────┬────────────┘
-           │  retriever (top-k=4)
-           ▼
-┌──────────────────────┐      ┌──────────────────────┐
-│ ConversationalRetrieval│◄────►│ ConversationBufferMem │
-│ Chain (LangChain)      │      │ (historial de chat)    │
-└──────────┬────────────┘      └──────────────────────┘
-           │
-           ▼
-┌──────────────────────┐
-│ ChatGroq                │  llama-3.1-8b-instant
-│ (Groq Cloud API)        │  (gratuito)
-└──────────┬────────────┘
-           │  respuesta
-           ▼
-┌──────────────────────┐
-│  Interfaz Streamlit     │  chat interactivo + sidebar
-└──────────────────────┘
+6 documentos PDF (documentos/)
+        │
+        ▼ PyPDFLoader
+        │
+        ▼ RecursiveCharacterTextSplitter (chunk_size=1200, overlap=300)
+        │
+        ▼ HuggingFaceEmbeddings (all-MiniLM-L6-v2)
+        │
+        ▼ Vector Store FAISS (índice local)
+        │
+        ▼ Retriever (top-k=4)
+        │
+        ├── Historial de conversación (LangChain LCEL)
+        │
+        ▼ ChatGroq — llama-3.1-8b-instant (gratuito)
+        │
+        ▼ Interfaz Streamlit (chat interactivo + sidebar)
 ```
 
-**Componentes técnicos:**
+| Componente | Tecnología |
+|---|---|
+| Orquestación RAG | LangChain LCEL |
+| Vector Store | FAISS (local) |
+| Embeddings | HuggingFace `all-MiniLM-L6-v2` |
+| LLM | `llama-3.1-8b-instant` vía Groq Cloud |
+| Interfaz | Streamlit |
+| Procesamiento de PDF | `PyPDFLoader` + `RecursiveCharacterTextSplitter` |
+| Generación de documentos | `reportlab` |
+| Deploy | Streamlit Community Cloud |
 
-| Componente               | Tecnología                                             |
-|---------------------------|----------------------------------------------------------|
-| Orquestación RAG          | [LangChain](https://www.langchain.com/)                  |
-| Vector Database            | [FAISS](https://github.com/facebookresearch/faiss) (local)|
-| Embeddings                 | HuggingFace `all-MiniLM-L6-v2` (sentence-transformers)   |
-| LLM                        | `llama-3.1-8b-instant` vía [Groq Cloud](https://groq.com/)|
-| Interfaz de usuario        | [Streamlit](https://streamlit.io/)                        |
-| Procesamiento de PDF        | `PyPDFLoader` + `RecursiveCharacterTextSplitter`          |
-| Generación del documento    | `reportlab` (PDF dummy corporativo)                       |
-| Deploy                       | OCI Compute (VM.Standard.E2.1.Micro, Always Free Tier)    |
+---
 
 ## 📂 Estructura del repositorio
 
 ```
 asistente-politicas-globex/
-├── app.py                       # Aplicación Streamlit con la cadena RAG
-├── generar_pdf_dummy.py         # Genera el manual de RH de Globex Corp
-├── generar_documentos_ecommerce.py  # Genera los 5 documentos de e-commerce
-├── documentos/                  # Carpeta con TODOS los PDF fuente (el agente los indexa todos)
-│   ├── Manual_Politicas_GlobexCorp.pdf              # RH: vacaciones, viáticos, remoto, ética
-│   ├── Politica_Privacidad_GlobexCorp.pdf           # Datos personales de clientes
+├── app.py                              # App Streamlit con cadena RAG (LCEL)
+├── generar_pdf_dummy.py                # Genera el manual de RH (PDF)
+├── generar_documentos_ecommerce.py     # Genera los 5 documentos de e-commerce (PDF)
+├── validar_agente.py                   # Batería de pruebas automáticas del agente
+├── colab_desarrollo.ipynb              # Notebook para desarrollar en Google Colab
+├── prueba_agente_notebook.ipynb        # Notebook de prueba de la lógica RAG
+├── documentos/
+│   ├── Manual_Politicas_GlobexCorp.pdf
+│   ├── Politica_Privacidad_GlobexCorp.pdf
 │   ├── Politica_Reembolsos_Devoluciones_GlobexCorp.pdf
-│   ├── FAQ_GlobexCorp.pdf                           # Preguntas frecuentes de compra
-│   ├── Guia_Envios_Entregas_GlobexCorp.pdf          # Tiempos, costos, cobertura
+│   ├── FAQ_GlobexCorp.pdf
+│   ├── Guia_Envios_Entregas_GlobexCorp.pdf
 │   └── Terminos_Condiciones_GlobexCorp.pdf
-├── indice_faiss/                # Índice vectorial (se genera automáticamente)
-├── requirements.txt             # Dependencias del proyecto
-├── .env.example                 # Plantilla de variables de entorno
+├── requirements.txt
+├── .env.example
 ├── .gitignore
-├── setup_local.sh               # Instalación y ejecución local (Linux/Mac)
-├── setup_local.ps1              # Instalación y ejecución local (Windows)
+├── setup_local.sh                      # Setup automático Linux/Mac
+├── setup_local.ps1                     # Setup automático Windows
 └── deploy/
-    ├── deploy_oci.sh            # Script de deploy dentro de la VM de OCI
-    ├── asistente_globex.service # Servicio systemd (auto-inicio en OCI)
-    └── DEPLOY_OCI.md            # Guía paso a paso del deploy en OCI
+    ├── deploy_oci.sh                   # Script de deploy en OCI Compute
+    ├── asistente_globex.service        # Servicio systemd para OCI
+    └── DEPLOY_OCI.md                   # Guía paso a paso OCI
 ```
 
-## 🚀 Instrucciones para ejecutar el proyecto localmente
+---
 
-### Requisitos previos
+## 🚀 Cómo ejecutar el proyecto localmente
+
+### Requisitos
 - Python 3.10 o superior
-- Una clave de API gratuita de Groq: [console.groq.com/keys](https://console.groq.com/keys)
+- GROQ_API_KEY gratuita: [console.groq.com/keys](https://console.groq.com/keys)
 
-### Opción A — Script automático
-
-**Linux / macOS:**
-```bash
-chmod +x setup_local.sh
-./setup_local.sh
-```
-
-**Windows (PowerShell):**
-```powershell
-.\setup_local.ps1
-```
-
-### Opción B — Paso a paso manual
+### Pasos
 
 ```bash
 # 1. Clonar el repositorio
 git clone https://github.com/TU_USUARIO/asistente-politicas-globex.git
 cd asistente-politicas-globex
 
-# 2. Crear y activar entorno virtual
+# 2. Crear entorno virtual
 python3 -m venv venv
-source venv/bin/activate        # En Windows: venv\Scripts\activate
+source venv/bin/activate        # Windows: venv\Scripts\activate
 
 # 3. Instalar dependencias
 pip install -r requirements.txt
 
-# 4. Generar los documentos PDF dummy (RH + e-commerce)
+# 4. Generar los documentos PDF
 python generar_pdf_dummy.py
 python generar_documentos_ecommerce.py
 
-# 5. Configurar variables de entorno
+# 5. Configurar API key
 cp .env.example .env
-# Edita el archivo .env y coloca tu GROQ_API_KEY real
+# Editar .env y agregar tu GROQ_API_KEY
 
-# 6. Ejecutar la aplicación
+# 6. Ejecutar
 streamlit run app.py
 ```
 
-La aplicación se abrirá automáticamente en `http://localhost:8501`.
+La app abre en `http://localhost:8501`.
 
-> 💡 También puedes prototipar todo el flujo en **Google Colab** antes de
-> correrlo localmente: sube `generar_pdf_dummy.py` y `app.py`, instala
-> las dependencias de `requirements.txt` con `!pip install`, y prueba la
-> lógica de la cadena RAG en celdas antes de pasar a Streamlit.
+### Alternativa — Google Colab
 
-## 💬 Ejemplos de preguntas y respuestas del agente
+Abre `colab_desarrollo.ipynb` en [colab.research.google.com](https://colab.research.google.com),
+sube los archivos del proyecto y sigue las celdas en orden. Incluye celda
+para levantar Streamlit con URL pública vía `pyngrok`.
 
-| Pregunta                                                              | Respuesta esperada (resumen)                                                                 |
-|---------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
-| *¿Cuántos días de vacaciones me corresponden con 6 años de antigüedad?* | Con 6 años de antigüedad corresponden **20 días hábiles** de vacaciones al año, según la tabla de la sección 1.1. |
-| *¿Cuál es el tope diario de viáticos de alimentación en un viaje internacional?* | El tope diario para alimentación en viaje internacional es de **USD 60**. |
-| *¿Qué equipo me da la empresa si trabajo en modalidad remota?*         | La empresa entrega en préstamo **laptop corporativa, monitor adicional (según stock), teclado y mouse inalámbricos**, y silla ergonómica tras 6 meses en remoto. |
-| *¿Cómo puedo denunciar una situación de acoso laboral de forma confidencial?* | A través de la **Línea Ética Globex**, un canal anónimo disponible 24/7 vía portal web, correo dedicado o línea telefónica gratuita. |
-| *¿Cuántos días tengo para devolver un producto?*                      | **30 días calendario** desde la entrega, sin necesidad de justificar el motivo (derecho de retracto). |
-| *¿Cuánto cuesta el envío estándar a una zona urbana?*                  | **USD 4.99**, con entrega estimada de 3 a 5 días hábiles; es gratis en compras mayores a USD 60. |
-| *¿Qué pasa si recibo un producto dañado?*                              | Debe reportarse dentro de **48 horas** desde "Mi Cuenta > Reportar problema", adjuntando fotos; se procesa reemplazo o reembolso sin costo. |
-| *¿Comparten mis datos con terceros?*                                    | Solo con mensajería, la pasarela de pago y email marketing (si diste consentimiento); **nunca se venden** a terceros con fines publicitarios ajenos. |
-| *¿Cuál es la política de vacaciones de la empresa X?* (fuera del documento) | El agente indica que **no cuenta con esa información en el manual** y sugiere contactar a Recursos Humanos, en lugar de inventar una respuesta. |
+---
 
-## ☁️ Evidencia del Deploy en OCI
+## 💬 Ejemplos de preguntas y respuestas
 
-- **URL pública de la aplicación:** `http://<IP_PUBLICA_DE_TU_INSTANCIA>:8501`
-  _(reemplazar con la IP real de la instancia una vez desplegada)_
-- **Captura de pantalla:** ver `deploy/screenshot-oci.png` _(agregar la captura real de la app corriendo en OCI)_
-- **Guía completa del proceso de deploy:** [`deploy/DEPLOY_OCI.md`](deploy/DEPLOY_OCI.md)
+| Pregunta | Respuesta del agente |
+|---|---|
+| ¿Cuántos días de vacaciones con 6 años de antigüedad? | **20 días hábiles** al año (sección 1.1 del manual de RH) |
+| ¿Cuántos días tengo para devolver un producto? | **30 días calendario** desde la entrega, sin justificar motivo |
+| ¿Cuánto cuesta el envío estándar a zona urbana? | **USD 4.99**, entrega en 3-5 días hábiles; gratis en compras > USD 60 |
+| ¿Qué pasa si recibo un producto dañado? | Reportar en **48 horas** desde "Mi Cuenta > Reportar problema"; se reemplaza o reembolsa sin costo |
+| ¿Comparten mis datos personales con terceros? | Solo con mensajería y pasarela de pago; **nunca se venden** a terceros |
+| ¿Cómo funciona el canal de denuncias internas? | **Línea Ética Globex**, canal anónimo disponible 24/7 |
+| ¿Cuál es la política de la empresa X? (fuera de alcance) | El agente indica que **no tiene esa información** y sugiere contactar soporte |
 
-## 🧠 Decisiones técnicas y notas
+---
 
-- Se usa **FAISS local** (en lugar de un servicio administrado) para
-  mantener el proyecto simple, gratuito y fácil de reproducir en la
-  instancia Always Free de OCI.
-- El LLM (`llama-3.1-8b-instant` en Groq Cloud) fue elegido por ser
-  **gratuito y de baja latencia**, ideal para una demo funcional.
-- La memoria de conversación (`ConversationBufferMemory`) permite hacer
-  preguntas de seguimiento (ej. *"¿y si tengo 10 años de antigüedad?"*)
-  manteniendo el contexto del chat.
-- El prompt del sistema obliga al modelo a responder **solo con base en
-  el contexto recuperado**, y a admitir cuando no tiene la información,
-  reduciendo alucinaciones.
+## ☁️ Evidencia del Deploy
 
-## 📄 Licencia y uso
+La aplicación está desplegada en **Streamlit Community Cloud** y accesible
+públicamente en todo momento:
 
-Proyecto desarrollado con fines educativos para el Challenge Alura Agente
-(Alura LATAM / Oracle). Los datos de "Globex Corp" son ficticios.
+🌐 **URL:** [https://rag-asistente-globe.streamlit.app](https://rag-asistente-globe.streamlit.app)
+
+![Captura de la app en producción](deploy/screenshot-deploy.png)
+
+> Para el deploy en OCI Compute, consultar la guía completa en [`deploy/DEPLOY_OCI.md`](deploy/DEPLOY_OCI.md).
+
+---
+
+## 🧠 Decisiones técnicas
+
+- **FAISS local** en lugar de un vector store administrado: mantiene el proyecto simple, reproducible y 100% gratuito.
+- **LangChain LCEL** (LangChain Expression Language) en lugar de `ConversationalRetrievalChain`: es la API moderna recomendada, más estable entre versiones y sin dependencias deprecadas.
+- **llama-3.1-8b-instant en Groq Cloud**: gratuito, baja latencia (~1-2 seg por respuesta), ideal para demos.
+- **Historial explícito** en `st.session_state`: permite preguntas de seguimiento como *"¿y con 10 años de antigüedad?"* manteniendo el contexto entre turnos.
+- **Prompt restrictivo**: el sistema instruye al modelo a responder solo con base en el contexto recuperado y a admitir cuando no tiene la información, reduciendo alucinaciones.
+- **6 documentos PDF**: cubren tanto el área interna de RH como la atención al cliente de e-commerce, haciendo al agente útil para dos perfiles distintos de usuario.
+
+---
+
+## 📄 Licencia
+
+Proyecto desarrollado con fines educativos para el **Challenge Alura Agente** (Alura LATAM / Oracle Next Education).
+Los datos de "Globex Corp" son completamente ficticios.
