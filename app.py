@@ -19,11 +19,11 @@ Ejecutar con:  streamlit run app.py
 ---------------------------------------------------------------------
 """
 
-import os
-import glob
+import os, glob, warnings
+warnings.filterwarnings("ignore")
+
 import streamlit as st
 from dotenv import load_dotenv
-
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
@@ -33,286 +33,127 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import HumanMessage, AIMessage
 
-# =====================================================================
-# 1. Configuración inicial de la página y variables de entorno
-# =====================================================================
-st.set_page_config(
-    page_title="Asistente de Políticas · Globex Corp",
-    page_icon="🤖",
-    layout="centered",
-)
+load_dotenv()
 
-load_dotenv()  # Carga variables desde el archivo .env si existe localmente
+st.set_page_config(page_title="Asistente · Globex Corp", page_icon="🤖", layout="centered")
 
-CARPETA_DOCUMENTOS = "documentos"
+CARPETA_DOCUMENTOS   = "documentos"
 CARPETA_INDICE_FAISS = "indice_faiss"
-MODELO_EMBEDDINGS = "sentence-transformers/all-MiniLM-L6-v2"
-MODELO_LLM = "llama-3.1-8b-instant"
-CHUNK_SIZE = 1200
-CHUNK_OVERLAP = 300
+MODELO_EMBEDDINGS    = "sentence-transformers/all-MiniLM-L6-v2"
+MODELO_LLM           = "llama-3.1-8b-instant"
+CHUNK_SIZE, CHUNK_OVERLAP = 1200, 300
 
-
-# =====================================================================
-# 2. Barra lateral: gestión de la API Key de Groq
-# =====================================================================
-def obtener_groq_api_key() -> str:
-    """
-    Obtiene la GROQ_API_KEY, primero desde variables de entorno (.env)
-    y, si no existe, permite ingresarla manualmente desde la barra lateral.
-    """
+def obtener_groq_api_key():
     with st.sidebar:
-        st.header("⚙️ Configuración")
-        st.markdown("**Globex Corp** — Asistente de Políticas Internas")
+        st.header("Configuracion")
+        st.markdown("**Globex Corp** - Asistente")
         st.divider()
-
-        api_key_env = os.getenv("GROQ_API_KEY", "")
-        api_key_input = st.text_input(
-            "GROQ_API_KEY",
-            value=api_key_env,
-            type="password",
-            help="Obtén tu clave gratuita en https://console.groq.com/keys",
-        )
-
-        if api_key_input:
-            st.success("✅ API Key configurada", icon="✅")
-        else:
-            st.warning("⚠️ Ingresa tu GROQ_API_KEY para poder usar el asistente.")
-
+        api_key = st.text_input("GROQ_API_KEY", value=os.getenv("GROQ_API_KEY",""), type="password")
+        st.success("API Key configurada") if api_key else st.warning("Ingresa tu GROQ_API_KEY")
         st.divider()
-        st.caption(
-            "Este asistente responde exclusivamente en base al "
-            "**Manual de Políticas Internas** de Globex Corp."
-        )
-
-        if st.button("🗑️ Reiniciar conversación"):
+        if st.button("Reiniciar conversacion"):
             st.session_state.pop("historial_chat", None)
-            st.session_state.pop("memoria", None)
+            st.session_state.pop("historial_mensajes", None)
             st.rerun()
+    return api_key
 
-    return api_key_input
-
-
-# =====================================================================
-# 3. Construcción / carga de la base vectorial (FAISS)
-# =====================================================================
-@st.cache_resource(show_spinner="📚 Procesando documentos y creando índice vectorial...")
+@st.cache_resource(show_spinner="Indexando documentos...")
 def construir_vectorstore():
-    """
-    Carga todos los PDF de la carpeta 'documentos', los divide en
-    fragmentos (chunks) y construye (o recupera desde disco) un índice
-    vectorial FAISS usando embeddings de HuggingFace.
-    """
     rutas_pdf = glob.glob(os.path.join(CARPETA_DOCUMENTOS, "*.pdf"))
-
     if not rutas_pdf:
         return None, 0
-
     embeddings = HuggingFaceEmbeddings(model_name=MODELO_EMBEDDINGS)
-
-    # Si ya existe un índice guardado en disco, lo reutilizamos (más rápido)
     if os.path.isdir(CARPETA_INDICE_FAISS):
-        vectorstore = FAISS.load_local(
-            CARPETA_INDICE_FAISS,
-            embeddings,
-            allow_dangerous_deserialization=True,
-        )
-        # Aun así devolvemos el conteo real de chunks re-procesando en memoria
-        # (barato, solo para mostrar la métrica en la interfaz)
-        documentos = []
-        for ruta in rutas_pdf:
-            documentos.extend(PyPDFLoader(ruta).load())
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP
-        )
-        total_chunks = len(splitter.split_documents(documentos))
-        return vectorstore, total_chunks
+        return FAISS.load_local(CARPETA_INDICE_FAISS, embeddings, allow_dangerous_deserialization=True), -1
+    docs = []
+    for r in rutas_pdf:
+        docs.extend(PyPDFLoader(r).load())
+    chunks = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP).split_documents(docs)
+    vs = FAISS.from_documents(chunks, embeddings)
+    vs.save_local(CARPETA_INDICE_FAISS)
+    return vs, len(chunks)
 
-    # 1) Cargar todos los PDF encontrados
-    documentos = []
-    for ruta in rutas_pdf:
-        loader = PyPDFLoader(ruta)
-        documentos.extend(loader.load())
+def construir_chain(retriever, api_key):
+    llm = ChatGroq(api_key=api_key, model=MODELO_LLM, temperature=0.2)
+    prompt = ChatPromptTemplate.from_messages([
+        ("system",
+         "Eres el asistente virtual de Globex Corp, una tienda online. "
+         "Respondes preguntas de RH y de clientes sobre la tienda. "
+         "Responde SIEMPRE en espanol basandote unicamente en el contexto. "
+         "Si no esta en el contexto, dilo explicitamente.\n\nContexto:\n{context}"),
+        MessagesPlaceholder(variable_name="historial"),
+        ("human", "{question}"),
+    ])
+    return prompt | llm | StrOutputParser()
 
-    # 2) Dividir en fragmentos (chunks) con superposición
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=CHUNK_SIZE,
-        chunk_overlap=CHUNK_OVERLAP,
-    )
-    fragmentos = splitter.split_documents(documentos)
-
-    # 3) Crear el índice vectorial FAISS y guardarlo en disco
-    vectorstore = FAISS.from_documents(fragmentos, embeddings)
-    vectorstore.save_local(CARPETA_INDICE_FAISS)
-
-    return vectorstore, len(fragmentos)
-
-
-# =====================================================================
-# 4. Construcción de la cadena conversacional RAG
-# =====================================================================
-def construir_cadena_rag(vectorstore, groq_api_key: str):
-    """
-    Arma la cadena ConversationalRetrievalChain: LLM (Groq) + Retriever
-    (FAISS) + Memoria de conversación (para mantener contexto entre turnos).
-    """
-    llm = ChatGroq(
-        api_key=groq_api_key,
-        model=MODELO_LLM,
-        temperature=0.2,
-    )
-
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
-
-    memoria = ConversationBufferMemory(
-        memory_key="chat_history",
-        return_messages=True,
-        output_key="answer",
-    )
-
-    prompt_qa = PromptTemplate(
-        input_variables=["context", "question"],
-        template=(
-            "Eres el asistente virtual de Globex Corp, una tienda online. "
-            "Respondes tanto preguntas internas de RH (vacaciones, viáticos, "
-            "trabajo remoto, ética) como preguntas de clientes sobre la tienda "
-            "(privacidad, reembolsos, envíos, términos y condiciones, FAQ). "
-            "Responde SIEMPRE en español, de forma clara y concisa, basándote "
-            "únicamente en el siguiente contexto extraído de los documentos "
-            "oficiales de Globex Corp. Si la respuesta no se encuentra en el "
-            "contexto, indica explícitamente que no cuentas con esa "
-            "información y sugiere contactar a RH (temas internos) o a "
-            "soporte@globexcorp.com (temas de clientes), según corresponda.\n\n"
-            "Contexto:\n{context}\n\n"
-            "Pregunta: {question}\n"
-            "Respuesta:"
-        ),
-    )
-
-    cadena = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=retriever,
-        memory=memoria,
-        return_source_documents=True,
-        combine_docs_chain_kwargs={"prompt": prompt_qa},
-        verbose=False,
-    )
-
-    return cadena
-
-
-# =====================================================================
-# 5. Interfaz principal de la aplicación
-# =====================================================================
 def main():
-    st.title("🤖 Asistente de Políticas Internas")
-    st.caption("Globex Corp · Agente RAG basado en el Manual de Políticas Internas")
-
+    st.title("Asistente de Globex Corp")
+    st.caption("Politicas internas y atencion al cliente - agente RAG")
     groq_api_key = obtener_groq_api_key()
 
-    # --- Validación: sin PDF no hay nada que hacer -----------------------
     if not glob.glob(os.path.join(CARPETA_DOCUMENTOS, "*.pdf")):
-        st.error(
-            "❌ No se encontró ningún PDF en la carpeta `documentos/`.\n\n"
-            "Ejecuta primero: `python generar_pdf_dummy.py` para generar el "
-            "manual de ejemplo, o coloca allí tu propio documento PDF."
-        )
+        st.error("No hay PDFs en documentos/")
         st.stop()
-
-    # --- Validación: sin API Key no se puede llamar al LLM ---------------
     if not groq_api_key:
-        st.info(
-            "👈 Ingresa tu **GROQ_API_KEY** en la barra lateral para comenzar "
-            "a chatear con el asistente.\n\n"
-            "Puedes obtener una clave gratuita en "
-            "[console.groq.com/keys](https://console.groq.com/keys)."
-        )
+        st.info("Ingresa tu GROQ_API_KEY en la barra lateral.")
         st.stop()
 
-    # --- Construcción del índice vectorial (una sola vez, cacheado) ------
     try:
         vectorstore, total_chunks = construir_vectorstore()
-    except Exception as error:
-        st.error(f"❌ Error al procesar los documentos: {error}")
+    except Exception as e:
+        st.error(f"Error al procesar documentos: {e}")
         st.stop()
 
     if vectorstore is None:
-        st.error("❌ No fue posible construir el índice vectorial.")
+        st.error("No se pudo construir el indice vectorial.")
         st.stop()
 
-    st.caption(f"📄 Base de conocimiento indexada: {total_chunks} fragmentos de texto.")
+    n_pdfs = len(glob.glob(os.path.join(CARPETA_DOCUMENTOS, "*.pdf")))
+    st.caption(f"{total_chunks if total_chunks > 0 else 'indice cargado'} | {n_pdfs} documentos.")
 
-    # --- Construcción de la cadena RAG (depende de la API key) -----------
-    try:
-        cadena_rag = construir_cadena_rag(vectorstore, groq_api_key)
-    except Exception as error:
-        st.error(
-            "❌ No fue posible inicializar el modelo de lenguaje. "
-            f"Verifica tu GROQ_API_KEY. Detalle técnico: {error}"
-        )
-        st.stop()
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+    chain     = construir_chain(retriever, groq_api_key)
 
-    # --- Historial de conversación en session_state -----------------------
     if "historial_chat" not in st.session_state:
-        st.session_state.historial_chat = [
-            {
-                "rol": "assistant",
-                "contenido": (
-                    "¡Hola! 👋 Soy el asistente de Globex Corp. Puedo responder "
-                    "preguntas de RH y también de tienda online. Por ejemplo:\n\n"
-                    "- ¿Cuántos días de vacaciones me corresponden con 6 años "
-                    "de antigüedad?\n"
-                    "- ¿Cuántos días tengo para devolver un producto?\n"
-                    "- ¿Cuánto cuesta el envío estándar a una zona urbana?\n"
-                    "- ¿Qué hago si recibo un producto dañado?\n"
-                    "- ¿Comparten mis datos personales con terceros?"
-                ),
-            }
-        ]
+        st.session_state.historial_chat     = []
+        st.session_state.historial_mensajes = []
+        st.session_state.historial_chat.append({"rol": "assistant", "contenido":
+            "Hola! Soy el asistente de Globex Corp. Por ejemplo:\n\n"
+            "- Cuantos dias de vacaciones me corresponden con 6 anos?\n"
+            "- Cuantos dias tengo para devolver un producto?\n"
+            "- Cuanto cuesta el envio estandar?\n"
+            "- Comparten mis datos personales con terceros?"
+        })
 
-    # --- Renderizado del historial ----------------------------------------
-    for mensaje in st.session_state.historial_chat:
-        with st.chat_message(mensaje["rol"]):
-            st.markdown(mensaje["contenido"])
+    for msg in st.session_state.historial_chat:
+        with st.chat_message(msg["rol"]):
+            st.markdown(msg["contenido"])
 
-    # --- Entrada de chat -----------------------------------------------------
-    pregunta_usuario = st.chat_input("Escribe tu pregunta sobre las políticas de Globex Corp...")
+    pregunta = st.chat_input("Escribe tu pregunta sobre Globex Corp...")
 
-    if pregunta_usuario:
-        st.session_state.historial_chat.append(
-            {"rol": "user", "contenido": pregunta_usuario}
-        )
+    if pregunta:
+        st.session_state.historial_chat.append({"rol": "user", "contenido": pregunta})
         with st.chat_message("user"):
-            st.markdown(pregunta_usuario)
-
+            st.markdown(pregunta)
         with st.chat_message("assistant"):
-            with st.spinner("Consultando el manual de políticas..."):
+            with st.spinner("Consultando documentos..."):
                 try:
-                    resultado = cadena_rag.invoke({"question": pregunta_usuario})
-                    respuesta = resultado["answer"]
-
-                    fuentes = resultado.get("source_documents", [])
-                    paginas = sorted(
-                        {doc.metadata.get("page", "?") + 1 for doc in fuentes}
-                    ) if fuentes else []
-
-                    if paginas:
-                        respuesta += (
-                            f"\n\n*📎 Fuente: páginas {', '.join(map(str, paginas))} "
-                            "del Manual de Políticas.*"
-                        )
-
-                except Exception as error:
-                    respuesta = (
-                        "⚠️ Ocurrió un error al generar la respuesta. "
-                        f"Detalle: {error}"
-                    )
-
+                    docs_relevantes = retriever.invoke(pregunta)
+                    contexto  = "\n\n".join(d.page_content for d in docs_relevantes)
+                    respuesta = chain.invoke({
+                        "context":   contexto,
+                        "historial": st.session_state.historial_mensajes,
+                        "question":  pregunta,
+                    })
+                    st.session_state.historial_mensajes.append(HumanMessage(content=pregunta))
+                    st.session_state.historial_mensajes.append(AIMessage(content=respuesta))
+                    fuentes = sorted({os.path.basename(d.metadata.get("source","")) for d in docs_relevantes})
+                    if fuentes:
+                        respuesta += f"\n\nFuentes: {', '.join(fuentes)}"
+                except Exception as e:
+                    respuesta = f"Error: {e}"
             st.markdown(respuesta)
-
-        st.session_state.historial_chat.append(
-            {"rol": "assistant", "contenido": respuesta}
-        )
-
+        st.session_state.historial_chat.append({"rol": "assistant", "contenido": respuesta})
 
 if __name__ == "__main__":
     main()
