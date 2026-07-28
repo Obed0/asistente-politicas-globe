@@ -1,22 +1,24 @@
 # --- Interfaz de usuario ---------------------------------------------
-streamlit==1.38.0
+streamlit
 
-# --- Orquestación RAG (LangChain) -------------------------------------
-langchain==0.3.7
-langchain-community==0.3.5
-langchain-groq==0.2.1
+# --- Orquestación RAG (LangChain) ------------------------------------
+langchain
+langchain-community
+langchain-groq
+langchain-text-splitters
+langchain-huggingface
 
-# --- Vector Store ------------------------------------------------------
-faiss-cpu==1.9.0
+# --- Vector Store -----------------------------------------------------
+faiss-cpu
 
-# --- Embeddings ----------------------------------------------------------
-sentence-transformers==3.2.1
+# --- Embeddings -------------------------------------------------------
+sentence-transformers
 
-# --- Procesamiento de PDF ----------------------------------------------
-pypdf==5.0.1
+# --- Procesamiento de PDF --------------------------------------------
+pypdf
 
-# --- Generación del PDF dummy (Paso A) ----------------------------------
-reportlab==4.2.5
+# --- Generación del PDF dummy (Paso A) --------------------------------
+reportlab
 
-# --- Variables de entorno ------------------------------------------------
-python-dotenv==1.0.1
+# --- Variables de entorno --------------------------------------------
+python-dotenv
